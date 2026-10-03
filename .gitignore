@@ -31,3 +31,21 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# SMTP Handler
+/bin/
+/data/
+*.db
+*.db-shm
+*.db-wal
+*.lock
+config.local.yaml
+
+# Admin UI (built assets are embedded at release time)
+web/node_modules/
+web/.vite/
+internal/ui/dist/*
+!internal/ui/dist/.gitkeep
+
+.cogmemory/
+.vscode/

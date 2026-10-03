@@ -1,0 +1,13 @@
+.git
+.github
+.vscode
+.cogmemory
+bin
+data
+web/node_modules
+internal/ui/dist/*
+!internal/ui/dist/.gitkeep
+*.db
+*.db-shm
+*.db-wal
+.env
