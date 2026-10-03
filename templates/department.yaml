@@ -1,0 +1,15 @@
+# The visitor picks a department by alias; the real addresses stay server-side.
+subject: "[{{.topic}}] {{.subject}}"
+text: |
+  {{.message}}
+
+recipients:
+  mode: alias
+  aliases:
+    sales:   ["sales@acme.example"]
+    support: ["support@acme.example", "oncall@acme.example"]
+
+fields:
+  topic:   { type: string, required: true, enum: ["Question", "Quote", "Bug"] }
+  subject: { type: string, required: true, max: 120 }
+  message: { type: text,   required: true, max: 4000 }

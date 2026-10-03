@@ -1,0 +1,23 @@
+# A public template: browsers may use it. The recipients live here, never in
+# the frontend, so a leaked publishable key can only ever email this inbox.
+subject: "New message from {{.name}}"
+html_file: contact-form.html
+text_file: contact-form.txt
+
+recipients:
+  mode: fixed
+  to: ["support@acme.example"]
+
+# Declaring fields is what makes a template safe to expose: unknown fields,
+# wrong types, over-long values and control characters are all rejected.
+fields:
+  name:    { type: string, required: true, max: 80 }
+  email:   { type: email,  required: true }
+  message: { type: text,   required: true, min: 5, max: 4000 }
+
+# Replies go to the visitor, not to no-reply@.
+reply_to_field: email
+reply_to_name_field: name
+
+# Hidden form field real users never fill in; bots that do are silently dropped.
+honeypot: website
