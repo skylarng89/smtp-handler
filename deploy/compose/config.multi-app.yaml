@@ -1,0 +1,30 @@
+# Config for multi-app-postgres.yaml. Secrets come from environment variables.
+server:
+  admin_addr: ":9090"
+  trusted_proxies: ["172.16.0.0/12"]   # your load balancer / proxy network
+
+# store.driver and dsn come from SMTPH_STORE_* in the compose file.
+
+admin:
+  enabled: true
+  ui: true
+  username: admin
+  password_hash: "$argon2id$REPLACE_WITH_OUTPUT_OF_hash-password"
+  # session_secret comes from SMTPH_ADMIN_SESSION_SECRET (shared by all replicas)
+
+delivery:
+  workers: 8
+
+projects:
+  - id: acme-web
+    from: "Acme <no-reply@acme.example>"
+    smtp:
+      host: smtp.example.com
+      username: mailer
+      password_env: ACME_SMTP_PASSWORD
+      max_connections: 4
+      global_max_connections: 6      # across both replicas; needs postgres
+    keys:
+      - { type: publishable, hash: "sha256:0000000000000000000000000000000000000000000000000000000000000001", allowed_origins: ["https://acme.example"] }
+      - { type: secret,      hash: "sha256:0000000000000000000000000000000000000000000000000000000000000002" }
+    templates_dir: /templates

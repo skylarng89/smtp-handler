@@ -1,0 +1,57 @@
+# Shared company service: several projects (configs/example.yaml style), two
+# replicas, PostgreSQL for the queue and cluster-wide rate limits.
+#
+#   export POSTGRES_PASSWORD=...  ACME_SMTP_PASSWORD=...  ADMIN_SESSION_SECRET=$(openssl rand -hex 32)
+#   docker compose -f deploy/compose/multi-app-postgres.yaml up --build
+#
+# Replicas are safe: jobs are claimed atomically with lease tokens, idempotency
+# keys are enforced by the database, and rate limits are shared. See
+# docs/ARCHITECTURE.md ("Running replicas").
+x-smtp-handler: &smtp-handler
+  build:
+    context: ../..
+    dockerfile: deploy/Dockerfile
+  image: smtp-handler:local
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+  environment:
+    SMTPH_CONFIG: /etc/smtp-handler/config.yaml
+    SMTPH_STORE_DRIVER: postgres
+    SMTPH_STORE_DSN: postgres://smtph:${POSTGRES_PASSWORD}@postgres:5432/smtph?sslmode=disable
+    SMTPH_ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET}
+    ACME_SMTP_PASSWORD: ${ACME_SMTP_PASSWORD}
+  volumes:
+    - ./config.multi-app.yaml:/etc/smtp-handler/config.yaml:ro
+    - ../../templates:/templates:ro
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  stop_grace_period: 30s
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: smtph
+      POSTGRES_DB: smtph
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smtph -d smtph"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  smtp-handler-1:
+    <<: *smtp-handler
+    ports: ["8081:8080", "127.0.0.1:9091:9090"]
+
+  smtp-handler-2:
+    <<: *smtp-handler
+    ports: ["8082:8080", "127.0.0.1:9092:9090"]
+
+volumes:
+  pgdata:
