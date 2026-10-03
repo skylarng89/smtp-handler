@@ -1,0 +1,116 @@
+# SMTP Handler - annotated reference configuration.
+#
+# Every setting has a default; this file shows the ones you will usually
+# change. Anything here can also be set with SMTPH_* environment variables
+# (see the README). Validate with:  smtp-handler config validate -config <file>
+#
+# Secrets never belong in this file in plaintext: use *_env / *_file
+# references. API keys are stored only as SHA-256 hashes
+# (generate with `smtp-handler keys generate`).
+
+server:
+  addr: ":8080"                 # public API (the one frontends call)
+  admin_addr: "127.0.0.1:9090"  # health, metrics, admin API and UI. Keep this internal.
+  # Only trust X-Forwarded-For from your own reverse proxy / load balancer,
+  # otherwise clients could spoof their IP to dodge per-IP rate limits.
+  trusted_proxies: []           # e.g. ["10.0.0.0/8"]
+  shutdown_delay: 0s            # set ~5s behind a load balancer so it can stop routing here first
+  # TLS is normally terminated by a reverse proxy. To terminate here instead:
+  # tls_cert_file: /certs/tls.crt
+  # tls_key_file: /certs/tls.key
+
+store:
+  driver: sqlite                # sqlite = single node (default); postgres = multi-node
+  dsn: data/smtp-handler.db     # for postgres: postgres://user:pass@host:5432/smtph?sslmode=require
+  # auto_migrate: true          # safe with replicas (advisory lock)
+
+# Rate-limit backend: auto = the database on postgres, else redis if
+# redis.url is set, else per-node memory.
+rate_limit: { backend: auto }
+# redis: { url: "redis://redis:6379/0" }
+
+delivery:
+  workers: 8                    # concurrent deliveries per node
+  max_attempts: 8
+  max_age: 24h                  # give up on a message after this long
+  backoff_base: 30s             # exponential backoff with jitter, capped at backoff_max
+  backoff_max: 1h
+  drain_timeout: 20s            # on shutdown, time allowed for in-flight sends
+
+retention:                      # how long messages are kept (also configurable per project)
+  sent: 30d
+  failed: 30d
+  drop_body_on_sent: false      # true = delete the message body once delivered (privacy)
+
+admin:                          # optional queue UI + API. Off by default.
+  enabled: false
+  ui: false                     # the UI is a client of the admin API
+  username: admin
+  # Create with:  smtp-handler hash-password
+  password_hash: ""
+  # Required when running more than one replica so sessions are valid on all of them.
+  session_secret: ""            # >= 32 random characters
+
+logging: { level: info, format: json }
+
+projects:
+  - id: acme-web
+    name: Acme website
+    from: "Acme <no-reply@acme.example>"
+    # Extra addresses clients with a secret key may send as. `from` is always allowed.
+    allowed_from: ["Acme Billing <billing@acme.example>"]
+
+    smtp:
+      host: smtp.example.com
+      port: 587
+      tls: starttls             # starttls | tls | none
+      username: mailer
+      password_env: ACME_SMTP_PASSWORD   # or password_file: /run/secrets/smtp_password
+      max_connections: 4        # per node
+      global_max_connections: 0 # across ALL replicas (needs postgres); 0 = unlimited
+
+    keys:
+      # Browser key: safe to embed in frontend code. Can only send the
+      # `public` templates below, only to their configured recipients, and only from these origins.
+      - type: publishable
+        label: website
+        # DEMO hash (matches no key). Replace with the output of `smtp-handler keys generate`.
+        hash: "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+        allowed_origins: ["https://acme.example", "https://*.preview.acme.example"]
+      # Server key: for your backend only. Keep it secret.
+      - type: secret
+        label: backend
+        hash: "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+
+    # What secret keys may send outside templates.
+    policy:
+      raw_recipients: domain_allowlist   # any | domain_allowlist | none
+      allowed_recipient_domains: [acme.example, customers.example]
+      max_recipients: 50
+      attachments:
+        max_count: 10
+        max_bytes: 10485760
+        allowed_extensions: [".pdf", ".png", ".jpg", ".txt", ".csv"]
+
+    rate_limits:
+      publishable:
+        per_key: { limit: 120, window: 1m }
+        per_ip: { limit: 10, window: 1m }
+        per_recipient: { limit: 100, window: 1h }   # caps inbox flooding
+        daily: { limit: 0, window: 24h }            # 0 = off
+      secret:
+        per_key: { limit: 1000, window: 1m }
+
+    # Bot protection for browser requests (turnstile | hcaptcha).
+    # captcha:
+    #   provider: turnstile
+    #   secret_env: TURNSTILE_SECRET
+
+    delivery:
+      semantics: at_least_once  # at_most_once = never resend after an unknown outcome
+
+    # Collapse identical requests without an Idempotency-Key (double-clicked submit buttons).
+    dedupe_window: 0s
+
+    # Load every *.yaml in this directory as a template (path relative to this file).
+    templates_dir: ../templates
