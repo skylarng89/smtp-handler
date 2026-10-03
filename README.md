@@ -3,7 +3,7 @@
 A small, fast service that sends email **on behalf of your frontend applications**, so SMTP
 credentials never ship in browser code.
 
-```
+```text
 Browser ──(publishable key + template + data)──▶ SMTP Handler ──(SMTP, pooled)──▶ your mail provider
 Backend ──(secret key + raw or template)───────▶      │
                                                       └─ queue · retries · rate limits · captcha · admin UI
